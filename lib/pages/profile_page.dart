@@ -136,10 +136,13 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    
     return Scaffold(
       appBar: AppBar(
         title: Text('Edit Profile'),
-        backgroundColor: Color(0xC4FF4000),
+        backgroundColor: primaryColor,
         elevation: 0,
       ),
       body: FadeTransition(
@@ -215,13 +218,15 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   }
 
   // Same _buildTextField and _buildDropdown methods as RegisterPage
-  // but with orange theme colors instead of white
+  // but with theme-based colors instead of hardcoded ones
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0.0, end: 1.0),
       duration: Duration(milliseconds: 300),
@@ -233,7 +238,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           decoration: InputDecoration(
             labelText: label,
             labelStyle: TextStyle(
-              color: Color.lerp(Colors.grey, Color(0xC4FF4000), value),
+              color: Color.lerp(Colors.grey, primaryColor, value),
             ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
@@ -241,7 +246,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(
-                color: Color(0xC4FF4000),
+                color: primaryColor,
                 width: 2.0,
               ),
             ),
@@ -315,6 +320,8 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   }
 
   Widget _animatedSaveButton() {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    
     return MouseRegion(
       onEnter: (_) => _buttonController.forward(),
       onExit: (_) => _buttonController.reverse(),
@@ -336,7 +343,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xC4FF4000).withOpacity(brightness),
+                  backgroundColor: primaryColor.withOpacity(brightness),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),

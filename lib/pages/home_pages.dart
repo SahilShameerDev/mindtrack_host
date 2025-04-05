@@ -6,7 +6,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:mindtrack/pages/profile_page.dart';
 import 'package:mindtrack/pages/mental_health_insights_page.dart';
+import 'package:mindtrack/services/api_service.dart';
 import 'package:mindtrack/utils/connection_checker.dart';
+import 'package:intl/intl.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -15,21 +17,24 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
-  static const platform = MethodChannel('com.example.screen_time_tracker/screen_time');
-  
+class _HomePageState extends State<HomePage>
+    with SingleTickerProviderStateMixin {
+  static const platform = MethodChannel(
+    'com.example.screen_time_tracker/screen_time',
+  );
+
   // Hive box for storing mood data
   late Box moodBox;
-  
+
   // Map to store day-mood pairs
   Map<String, int> weeklyMoods = {
     'Monday': 0,
     'Tuesday': 0,
     'Wednesday': 0,
-    'Thursday': 0, 
+    'Thursday': 0,
     'Friday': 0,
     'Saturday': 0,
-    'Sunday': 0
+    'Sunday': 0,
   };
 
   String _screenTime = 'Loading...';
@@ -39,17 +44,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  
+
   bool _isDrawerOpen = false;
 
   // Add these new fields for mood description
-  final TextEditingController _moodDescriptionController = TextEditingController();
+  final TextEditingController _moodDescriptionController =
+      TextEditingController();
   String _todayMoodDescription = '';
   bool _isEditing = false;
 
   // Add these state variables to your class
   List<String> _mentalHealthSuggestions = [];
   bool _isLoadingSuggestions = false;
+  String _lastTipsFetchTime = 'Never';
+  bool _isCacheExpired = true;
 
   @override
   void initState() {
@@ -66,26 +74,26 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     _fetchData();
     _loadMoodDescription();
     _loadMentalHealthSuggestions(); // Add this line
-    
+
     // Start the animation after the widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _animationController.forward();
     });
   }
-  
+
   @override
   void dispose() {
     _animationController.dispose();
     _moodDescriptionController.dispose();
     super.dispose();
   }
-  
+
   // Initialize Hive and load saved mood data
   Future<void> _initHive() async {
     moodBox = await Hive.openBox('mood_data');
     _loadMoodData();
   }
-  
+
   // Load saved mood data from Hive
   void _loadMoodData() {
     final savedMoods = moodBox.get('weekly_moods');
@@ -94,19 +102,19 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         weeklyMoods = Map<String, int>.from(savedMoods);
       });
     }
-    
+
     // Get today's selected mood if available
     final today = _getCurrentDayName();
     setState(() {
       _selectedMoodIndex = weeklyMoods[today] ?? 0;
     });
   }
-  
+
   // Load saved mood description from Hive
   Future<void> _loadMoodDescription() async {
     final today = _getCurrentDayName();
     final savedDescription = moodBox.get('mood_description_$today');
-    
+
     if (savedDescription != null) {
       setState(() {
         _todayMoodDescription = savedDescription;
@@ -114,17 +122,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       });
     }
   }
-  
+
   // Save mood description to Hive
   Future<void> _saveMoodDescription(String description) async {
     final today = _getCurrentDayName();
     await moodBox.put('mood_description_$today', description);
-    
+
     setState(() {
       _todayMoodDescription = description;
       _isEditing = false;
     });
-    
+
     // Show feedback
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -132,13 +140,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         duration: Duration(seconds: 1),
         backgroundColor: Color.fromARGB(255, 255, 100, 0),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }
-  
+
   // Use a suggested mood description
   void _useSuggestedMood(String suggestion) {
     _moodDescriptionController.text = suggestion;
@@ -150,15 +156,23 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _saveMoodDescription(suggestion);
     }
   }
-  
+
   // Get current day of week as string
   String _getCurrentDayName() {
     final now = DateTime.now();
-    final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
     // DateTime weekday is 1-7 where 1 is Monday, so subtract 1 for zero-indexed array
     return days[now.weekday - 1];
   }
-  
+
   // Save mood for today
   Future<void> _saveMood(int moodIndex) async {
     final today = _getCurrentDayName();
@@ -166,7 +180,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _selectedMoodIndex = moodIndex;
       weeklyMoods[today] = moodIndex;
     });
-    
+
     // Save to Hive
     await moodBox.put('weekly_moods', weeklyMoods);
   }
@@ -174,7 +188,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   Future<void> _fetchData() async {
     try {
       // Fetch screen time
-      final screenTimeData = await platform.invokeMethod<Map>('getScreenTimeData');
+      final screenTimeData = await platform.invokeMethod<Map>(
+        'getScreenTimeData',
+      );
       final totalUsageTime = screenTimeData?['totalUsageTime'] ?? 0;
       setState(() {
         // Convert minutes to hours and minutes format
@@ -192,7 +208,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       });
 
       // Fetch unlock count
-      final unlockCountData = await platform.invokeMethod<Map>('getPhoneUnlockCount');
+      final unlockCountData = await platform.invokeMethod<Map>(
+        'getPhoneUnlockCount',
+      );
       final totalUnlocks = unlockCountData?['totalUnlocks'] ?? 0;
       setState(() {
         _unlockCount = '$totalUnlocks';
@@ -202,10 +220,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       final appUsage = screenTimeData?['appUsage'] as List<dynamic>? ?? [];
       if (appUsage.isNotEmpty) {
         final appPackageName = appUsage.first['appName'] ?? 'Unknown';
-        
+
         // Extract clean app name from package name
         final String cleanAppName = _formatAppName(appPackageName);
-        
+
         setState(() {
           _mostUsedApp = cleanAppName;
         });
@@ -236,15 +254,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   // Widget for emoji button with selection indicator and feedback
   Widget _moodEmojiButton(int index, String imagePath, {double size = 60}) {
     final isSelected = _selectedMoodIndex == index;
-    
+
     return GestureDetector(
       onTap: () {
         // Add haptic feedback
         HapticFeedback.mediumImpact();
-        
+
         // Save mood
         _saveMood(index);
-        
+
         // Show feedback
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -267,14 +285,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             child: Container(
               width: size,
               height: size,
-              decoration: isSelected 
-                ? BoxDecoration(
-                    border: Border.all(color: Colors.white, width: 3),
-                    borderRadius: BorderRadius.circular(size / 2),
-                  )
-                : null,
+              decoration:
+                  isSelected
+                      ? BoxDecoration(
+                        border: Border.all(color: Colors.white, width: 3),
+                        borderRadius: BorderRadius.circular(size / 2),
+                      )
+                      : null,
               child: Padding(
-                padding: isSelected ? const EdgeInsets.all(3.0) : EdgeInsets.zero,
+                padding:
+                    isSelected ? const EdgeInsets.all(3.0) : EdgeInsets.zero,
                 child: Image.asset(imagePath),
               ),
             ),
@@ -286,8 +306,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
+    // Get theme colors
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+    final textColor =
+        isDarkMode
+            ? Colors.white
+            : Theme.of(context).textTheme.bodyLarge?.color;
+
     return Scaffold(
-      backgroundColor: Color(0xFFF8F8F8), // Slightly off-white background for less harsh contrast
+      backgroundColor: backgroundColor, // Use theme background color
       body: Stack(
         children: [
           SingleChildScrollView(
@@ -298,13 +328,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 GestureDetector(
                   onVerticalDragEnd: (details) {
                     // If dragged up with significant velocity, collapse the bar
-                    if (details.primaryVelocity != null && details.primaryVelocity! < -300) {
+                    if (details.primaryVelocity != null &&
+                        details.primaryVelocity! < -300) {
                       setState(() {
                         _isExpanded = false;
                       });
                     }
                     // If dragged down with significant velocity, expand the bar
-                    else if (details.primaryVelocity != null && details.primaryVelocity! > 300) {
+                    else if (details.primaryVelocity != null &&
+                        details.primaryVelocity! > 300) {
                       setState(() {
                         _isExpanded = true;
                       });
@@ -316,7 +348,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     duration: const Duration(milliseconds: 300),
                     curve: Curves.easeInOut,
                     decoration: BoxDecoration(
-                      color: Color.fromARGB(192, 255, 64, 0),
+                      color: primaryColor, // Use dynamic primary color
                       borderRadius: BorderRadius.only(
                         bottomLeft: Radius.circular(45),
                         bottomRight: Radius.circular(45),
@@ -324,7 +356,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     ),
                     height: _isExpanded ? _expandedHeight : _collapsedHeight,
                     width: double.infinity,
-                    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5), // Prevent overflow
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.5,
+                    ), // Prevent overflow
                     child: SafeArea(
                       child: Padding(
                         padding: const EdgeInsets.all(32.0),
@@ -338,7 +372,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                 Text(
                                   'Welcome,',
                                   style: TextStyle(
-                                    color: Color(0xFFFFFFFF),
+                                    color:
+                                        Colors
+                                            .white, // Keep this white for contrast
                                     fontSize: 24, // Reduced from 30
                                     fontWeight: FontWeight.bold,
                                     fontFamily: 'Inter',
@@ -346,8 +382,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                 ),
                                 Spacer(),
                                 IconButton(
-                                  icon: Icon(Icons.menu, color: Color(0xFFFFFFFF)),
-                                  onPressed: () => setState(() => _isDrawerOpen = !_isDrawerOpen),
+                                  icon: Icon(
+                                    Icons.menu,
+                                    color: Color(0xFFFFFFFF),
+                                  ),
+                                  onPressed:
+                                      () => setState(
+                                        () => _isDrawerOpen = !_isDrawerOpen,
+                                      ),
                                 ),
                               ],
                             ),
@@ -365,13 +407,29 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                             Row(
                               children: [
                                 SizedBox(width: 10),
-                                _moodEmojiButton(1, 'lib/icons/1.png', size: 50), // Reduced size
+                                _moodEmojiButton(
+                                  1,
+                                  'lib/icons/1.png',
+                                  size: 50,
+                                ), // Reduced size
                                 SizedBox(width: 30), // Reduced gap
-                                _moodEmojiButton(2, 'lib/icons/2.png', size: 50),
+                                _moodEmojiButton(
+                                  2,
+                                  'lib/icons/2.png',
+                                  size: 50,
+                                ),
                                 SizedBox(width: 30),
-                                _moodEmojiButton(3, 'lib/icons/3.png', size: 50),
+                                _moodEmojiButton(
+                                  3,
+                                  'lib/icons/3.png',
+                                  size: 50,
+                                ),
                                 SizedBox(width: 30),
-                                _moodEmojiButton(4, 'lib/icons/4.png', size: 50),
+                                _moodEmojiButton(
+                                  4,
+                                  'lib/icons/4.png',
+                                  size: 50,
+                                ),
                               ],
                             ),
                             // Second row of Emojis - Only visible when expanded
@@ -384,17 +442,37 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                 child:
                                     _isExpanded
                                         ? Padding(
-                                          padding: const EdgeInsets.only(top: 20),
+                                          padding: const EdgeInsets.only(
+                                            top: 20,
+                                          ),
                                           child: Row(
                                             children: [
                                               SizedBox(width: 10),
-                                              _moodEmojiButton(5, 'lib/icons/5.png', size: 50), // Reduced size
-                                              SizedBox(width: 30), // Reduced gap
-                                              _moodEmojiButton(6, 'lib/icons/6.png', size: 50),
+                                              _moodEmojiButton(
+                                                5,
+                                                'lib/icons/5.png',
+                                                size: 50,
+                                              ), // Reduced size
+                                              SizedBox(
+                                                width: 30,
+                                              ), // Reduced gap
+                                              _moodEmojiButton(
+                                                6,
+                                                'lib/icons/6.png',
+                                                size: 50,
+                                              ),
                                               SizedBox(width: 30),
-                                              _moodEmojiButton(7, 'lib/icons/7.png', size: 50),
+                                              _moodEmojiButton(
+                                                7,
+                                                'lib/icons/7.png',
+                                                size: 50,
+                                              ),
                                               SizedBox(width: 30),
-                                              _moodEmojiButton(8, 'lib/icons/8.png', size: 50),
+                                              _moodEmojiButton(
+                                                8,
+                                                'lib/icons/8.png',
+                                                size: 50,
+                                              ),
                                             ],
                                           ),
                                         )
@@ -407,12 +485,15 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                               alignment: Alignment.center,
                               child: Container(
                                 width: 120,
-                                height: 5, // Increased from 5 to 8 for better visibility
+                                height:
+                                    5, // Increased from 5 to 8 for better visibility
                                 decoration: BoxDecoration(
                                   color: Colors.white,
                                   borderRadius: BorderRadius.circular(10),
                                 ),
-                                margin: EdgeInsets.only(bottom: 10), // Add margin for larger tap area
+                                margin: EdgeInsets.only(
+                                  bottom: 10,
+                                ), // Add margin for larger tap area
                               ),
                             ),
                           ],
@@ -433,7 +514,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         child: Text(
                           'How Was Your Day?',
                           style: TextStyle(
-                            color: Color(0xFF000000),
+                            color: textColor, // Use theme text color
                             fontSize: 25,
                             fontWeight: FontWeight.bold,
                             fontFamily: 'Inter',
@@ -447,66 +528,97 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           minHeight: 50, // Reduced from 60
                         ),
                         decoration: BoxDecoration(
-                          color: Color.fromARGB(168, 254, 140, 0),
+                          color: secondaryColor, // Use dynamic secondary color
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                          child: _isEditing
-                              ? Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _moodDescriptionController,
-                                        decoration: InputDecoration(
-                                          hintText: 'How are you feeling today?',
-                                          hintStyle: TextStyle(color: Colors.white70, fontSize: 14), // Reduced font size
-                                          border: InputBorder.none,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16.0,
+                            vertical: 8.0,
+                          ),
+                          child:
+                              _isEditing
+                                  ? Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          controller:
+                                              _moodDescriptionController,
+                                          decoration: InputDecoration(
+                                            hintText:
+                                                'How are you feeling today?',
+                                            hintStyle: TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 14,
+                                            ), // Reduced font size
+                                            border: InputBorder.none,
+                                          ),
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                          ), // Reduced font size
+                                          maxLines: null,
                                         ),
-                                        style: TextStyle(color: Colors.white, fontSize: 14), // Reduced font size
-                                        maxLines: null,
                                       ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.check, color: Colors.white),
-                                      onPressed: () {
-                                        _saveMoodDescription(_moodDescriptionController.text);
-                                      },
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.close, color: Colors.white),
-                                      onPressed: () {
-                                        setState(() {
-                                          _moodDescriptionController.text = _todayMoodDescription;
-                                          _isEditing = false;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                )
-                              : Row(
-                                  children: [
-                                    Expanded(
-                                      child: _todayMoodDescription.isEmpty
-                                          ? Text(
-                                              'Tap to add how you feel today...',
-                                              style: TextStyle(color: Colors.white70, fontSize: 14), // Reduced font size
-                                            )
-                                          : Text(
-                                              _todayMoodDescription,
-                                              style: TextStyle(color: Colors.white, fontSize: 14), // Reduced font size
-                                            ),
-                                    ),
-                                    IconButton(
-                                      icon: Icon(Icons.edit, color: Colors.white),
-                                      onPressed: () {
-                                        setState(() {
-                                          _isEditing = true;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.check,
+                                          color: Colors.white,
+                                        ),
+                                        onPressed: () {
+                                          _saveMoodDescription(
+                                            _moodDescriptionController.text,
+                                          );
+                                        },
+                                      ),
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _moodDescriptionController.text =
+                                                _todayMoodDescription;
+                                            _isEditing = false;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  )
+                                  : Row(
+                                    children: [
+                                      Expanded(
+                                        child:
+                                            _todayMoodDescription.isEmpty
+                                                ? Text(
+                                                  'Tap to add how you feel today...',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 14,
+                                                  ), // Reduced font size
+                                                )
+                                                : Text(
+                                                  _todayMoodDescription,
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 14,
+                                                  ), // Reduced font size
+                                                ),
+                                      ),
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.edit,
+                                          color: Colors.white,
+                                        ),
+                                        onPressed: () {
+                                          setState(() {
+                                            _isEditing = true;
+                                          });
+                                        },
+                                      ),
+                                    ],
+                                  ),
                         ),
                       ),
                       SizedBox(height: 20),
@@ -525,52 +637,64 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                        //Screen Time Card
-                        _fadeInWidget(
-                          delay: 0.2,
-                          child: _animatedCard(
-                            width: 140, // Redu3ed from 149
-                            height: 110, // Reduced from 131
-                            onTap: () {
-                              Navigator.pushNamed(context, '/screen-time');
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                    child: Text(
-                                      'Screen Time',
-                                      style: TextStyle(
-                                        color: Colors.black,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.normal,
-                                        fontFamily: 'Inter',
+                          //Screen Time Card
+                          _fadeInWidget(
+                            delay: 0.2,
+                            child: _animatedCard(
+                              width: 140, // Redu3ed from 149
+                              height: 110, // Reduced from 131
+                              onTap: () {
+                                Navigator.pushNamed(context, '/screen-time');
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.all(8.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisAlignment: MainAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4.0,
+                                      ),
+                                      child: Text(
+                                        'Screen Time',
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.white
+                                                  : Colors.black,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.normal,
+                                          fontFamily: 'Inter',
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 4.0),
-                                    child: Text(
-                                      _screenTime,
-                                      style: TextStyle(
-                                        color: Colors.black,
-                                        fontSize: 29,
-                                        fontWeight: FontWeight.bold,
-                                        fontFamily: 'Inter',
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4.0,
+                                      ),
+                                      child: Text(
+                                        _screenTime,
+                                        style: TextStyle(
+                                          color:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.white
+                                                  : Colors.black,
+                                          fontSize: 29,
+                                          fontWeight: FontWeight.bold,
+                                          fontFamily: 'Inter',
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        SizedBox(width: 40),
-                        // Unlock Count Card
+                          SizedBox(width: 40),
+                          // Unlock Count Card
                           _fadeInWidget(
                             delay: 0.3,
                             child: _animatedCard(
@@ -586,11 +710,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                   mainAxisAlignment: MainAxisAlignment.start,
                                   children: [
                                     Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4.0,
+                                      ),
                                       child: Text(
                                         'Unlock Count',
                                         style: TextStyle(
-                                          color: Colors.black,
+                                          color:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.white
+                                                  : Colors.black,
                                           fontSize: 12,
                                           fontWeight: FontWeight.normal,
                                           fontFamily: 'Inter',
@@ -598,11 +728,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                                       ),
                                     ),
                                     Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 4.0),
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 4.0,
+                                      ),
                                       child: Text(
                                         _unlockCount,
                                         style: TextStyle(
-                                          color: Colors.black,
+                                          color:
+                                              Theme.of(context).brightness ==
+                                                      Brightness.dark
+                                                  ? Colors.white
+                                                  : Colors.black,
                                           fontSize: 29,
                                           fontWeight: FontWeight.bold,
                                           fontFamily: 'Inter',
@@ -615,11 +751,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                             ),
                           ),
                         ],
-                      )
-                      
+                      ),
                     ],
                   ),
-                  
                 ),
 
                 //MOST USED APPS
@@ -640,7 +774,11 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                             child: Text(
                               'Most used apps',
                               style: TextStyle(
-                                color: Colors.black,
+                                color:
+                                    Theme.of(context).brightness ==
+                                            Brightness.dark
+                                        ? Colors.white
+                                        : Colors.black,
                                 fontSize: 16, // Reduced from 18
                                 fontWeight: FontWeight.w400,
                                 fontFamily: 'Inter',
@@ -649,11 +787,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8.0),
-                            child: Align(alignment: Alignment.center,
+                            child: Align(
+                              alignment: Alignment.center,
                               child: Text(
                                 _mostUsedApp,
                                 style: TextStyle(
-                                  color: Colors.black,
+                                  color:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : Colors.black,
                                   fontSize: 30,
                                   fontWeight: FontWeight.w400,
                                   fontFamily: 'Inter',
@@ -681,7 +824,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           Text(
                             'Weekly Mood Board',
                             style: TextStyle(
-                              color: Colors.black,
+                              color: textColor,
                               fontSize: 18,
                               fontWeight: FontWeight.w400,
                               fontFamily: 'Inter',
@@ -689,25 +832,53 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           ),
                           SizedBox(height: 20),
                           Expanded(
-                            child: _buildMoodChart(),
+                            child: _buildMoodChart(isDarkMode: isDarkMode),
                           ),
                           SizedBox(height: 10),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
-                              _buildDayMoodColumn('Mon', weeklyMoods['Monday'] ?? 0, emojiSize: 30), // Reduced size
+                              _buildDayMoodColumn(
+                                'Mon',
+                                weeklyMoods['Monday'] ?? 0,
+                                emojiSize: 30,
+                              ), // Reduced size
                               SizedBox(width: 10), // Added gap
-                              _buildDayMoodColumn('Tue', weeklyMoods['Tuesday'] ?? 0, emojiSize: 30),
+                              _buildDayMoodColumn(
+                                'Tue',
+                                weeklyMoods['Tuesday'] ?? 0,
+                                emojiSize: 30,
+                              ),
                               SizedBox(width: 10),
-                              _buildDayMoodColumn('Wed', weeklyMoods['Wednesday'] ?? 0, emojiSize: 30),
+                              _buildDayMoodColumn(
+                                'Wed',
+                                weeklyMoods['Wednesday'] ?? 0,
+                                emojiSize: 30,
+                              ),
                               SizedBox(width: 10),
-                              _buildDayMoodColumn('Thu', weeklyMoods['Thursday'] ?? 0, emojiSize: 30),
+                              _buildDayMoodColumn(
+                                'Thu',
+                                weeklyMoods['Thursday'] ?? 0,
+                                emojiSize: 30,
+                              ),
                               SizedBox(width: 10),
-                              _buildDayMoodColumn('Fri', weeklyMoods['Friday'] ?? 0, emojiSize: 30),
+                              _buildDayMoodColumn(
+                                'Fri',
+                                weeklyMoods['Friday'] ?? 0,
+                                emojiSize: 30,
+                              ),
                               SizedBox(width: 10),
-                              _buildDayMoodColumn('Sat', weeklyMoods['Saturday'] ?? 0, emojiSize: 30),
+                              _buildDayMoodColumn(
+                                'Sat',
+                                weeklyMoods['Saturday'] ?? 0,
+                                emojiSize: 30,
+                              ),
                               SizedBox(width: 10),
-                              _buildDayMoodColumn('Sun', weeklyMoods['Sunday'] ?? 0, emojiSize: 30),
+                              _buildDayMoodColumn(
+                                'Sun',
+                                weeklyMoods['Sunday'] ?? 0,
+                                emojiSize: 30,
+                              ),
                             ],
                           ),
                         ],
@@ -724,7 +895,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                     onTap: () async {
                       // Get user data from Hive first - this doesn't need to wait for connection check
                       final userBox = Hive.box('user_data');
-                      
+
                       // Prepare the data to send to backend
                       Map<String, dynamic> userData = {
                         'weekly_moods': weeklyMoods,
@@ -732,16 +903,27 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                         'unlock_count': _unlockCount,
                         'most_used_app': _mostUsedApp,
                         'mood_description': _todayMoodDescription,
-                        'profession': userBox.get('profession', defaultValue: 'Not specified'),
-                        'gender': userBox.get('gender', defaultValue: 'Not specified'),
-                        'age': userBox.get('age', defaultValue: 'Not specified')
+                        'profession': userBox.get(
+                          'profession',
+                          defaultValue: 'Not specified',
+                        ),
+                        'gender': userBox.get(
+                          'gender',
+                          defaultValue: 'Not specified',
+                        ),
+                        'age': userBox.get(
+                          'age',
+                          defaultValue: 'Not specified',
+                        ),
                       };
-                      
+
                       // Navigate directly to insights page - it will handle connection internally
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (context) => MentalHealthInsightsPage(userData: userData),
+                          builder:
+                              (context) =>
+                                  MentalHealthInsightsPage(userData: userData),
                         ),
                       );
                     },
@@ -757,23 +939,39 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                               Text(
                                 'Mental Health Suggestions',
                                 style: TextStyle(
-                                  color: Colors.black,
+                                  color:
+                                      Theme.of(context).brightness ==
+                                              Brightness.dark
+                                          ? Colors.white
+                                          : Colors.black,
                                   fontSize: 18,
                                   fontWeight: FontWeight.w400,
                                   fontFamily: 'Inter',
                                 ),
                               ),
-                              _isLoadingSuggestions 
-                                ? SizedBox(
+                              _isLoadingSuggestions
+                                  ? SizedBox(
                                     width: 20,
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color:
+                                          Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? Colors.white
+                                              : const Color.fromARGB(
+                                                255,
+                                                43,
+                                                43,
+                                                43,
+                                              ),
                                     ),
                                   )
-                                : IconButton(
-                                    icon: Icon(Icons.refresh, color: Colors.white),
+                                  : IconButton(
+                                    icon: Icon(
+                                      Icons.refresh,
+                                      color: Colors.white,
+                                    ),
                                     onPressed: _loadMentalHealthSuggestions,
                                   ),
                             ],
@@ -782,69 +980,115 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                           Expanded(
                             child: Container(
                               decoration: BoxDecoration(
-                                color: Color.fromARGB(255, 255, 255, 255),
+                                color:
+                                          Theme.of(context).brightness ==
+                                                  Brightness.dark
+                                              ? const Color.fromARGB(
+                                                255,
+                                                43,
+                                                43,
+                                                43,
+                                              )
+                                              : Colors.white,
                                 borderRadius: BorderRadius.circular(10),
                               ),
-                              child: _isLoadingSuggestions
-                                ? Center(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        CircularProgressIndicator(
-                                          valueColor: AlwaysStoppedAnimation<Color>(
-                                            Color.fromARGB(255, 255, 100, 0),
-                                          ),
-                                        ),
-                                        SizedBox(height: 16),
-                                        Text(
-                                          'Loading suggestions...',
-                                          style: TextStyle(
-                                            color: Colors.black54,
-                                            fontSize: 14,
-                                            fontFamily: 'Inter',
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    padding: EdgeInsets.zero,
-                                    itemCount: _mentalHealthSuggestions.length,
-                                    physics: NeverScrollableScrollPhysics(),
-                                    itemBuilder: (context, index) {
-                                      return Padding(
-                                        padding: const EdgeInsets.fromLTRB(10, 5, 10, 5),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
+                              child:
+                                  _isLoadingSuggestions
+                                      ? Center(
+                                        child: Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
                                           children: [
-                                            Padding(
-                                              padding: const EdgeInsets.only(top: 3),
-                                              child: Container(
-                                                width: 8,
-                                                height: 8,
-                                                decoration: BoxDecoration(
-                                                  color: Color.fromARGB(255, 255, 100, 0),
-                                                  shape: BoxShape.circle,
-                                                ),
-                                              ),
+                                            CircularProgressIndicator(
+                                              valueColor:
+                                                  AlwaysStoppedAnimation<Color>(
+                                                    Color.fromARGB(
+                                                      255,
+                                                      255,
+                                                      100,
+                                                      0,
+                                                    ),
+                                                  ),
                                             ),
-                                            SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                _mentalHealthSuggestions[index],
-                                                style: TextStyle(
-                                                  color: Colors.black,
-                                                  fontSize: 15,
-                                                  fontWeight: FontWeight.w400,
-                                                  fontFamily: 'Inter',
-                                                ),
+                                            SizedBox(height: 16),
+                                            Text(
+                                              'Loading suggestions...',
+                                              style: TextStyle(
+                                                color:
+                                                    Theme.of(
+                                                              context,
+                                                            ).brightness == 
+                                                            Brightness.dark
+                                                        ? Colors.white
+                                                        : Colors.black,
+                                                fontSize: 14,
+                                                fontFamily: 'Inter',
                                               ),
                                             ),
                                           ],
                                         ),
-                                      );
-                                    },
-                                  ),
+                                      )
+                                      : ListView.builder(
+                                        padding: EdgeInsets.zero,
+                                        itemCount:
+                                            _mentalHealthSuggestions.length,
+                                        physics: NeverScrollableScrollPhysics(),
+                                        itemBuilder: (context, index) {
+                                          return Padding(
+                                            padding: const EdgeInsets.fromLTRB(
+                                              10,
+                                              5,
+                                              10,
+                                              5,
+                                            ),
+                                            child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        top: 3,
+                                                      ),
+                                                  child: Container(
+                                                    width: 8,
+                                                    height: 8,
+                                                    decoration: BoxDecoration(
+                                                      color: Color.fromARGB(
+                                                        255,
+                                                        255,
+                                                        100,
+                                                        0,
+                                                      ),
+                                                      shape: BoxShape.circle,
+                                                    ),
+                                                  ),
+                                                ),
+                                                SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    _mentalHealthSuggestions[index],
+                                                    style: TextStyle(
+                                                      color:
+                                                          Theme.of(
+                                                                    context,
+                                                                  ).brightness == 
+                                                                  Brightness
+                                                                      .dark
+                                                              ? Colors.white
+                                                              : Colors.black,
+                                                      fontSize: 15,
+                                                      fontWeight:
+                                                          FontWeight.w400,
+                                                      fontFamily: 'Inter',
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
                             ),
                           ),
                         ],
@@ -853,7 +1097,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   ),
                 ),
                 SizedBox(height: 20),
-                    
               ],
             ),
           ),
@@ -863,24 +1106,33 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       ),
     );
   }
-  
+
   // Helper method to build a day column with mood indicator
-  Widget _buildDayMoodColumn(String day, int moodIndex, {double emojiSize = 40}) {
-    String imagePath = moodIndex > 0 && moodIndex <= 8 
-        ? 'lib/icons/$moodIndex.png' 
-        : 'lib/icons/empty.png';
-    
+  Widget _buildDayMoodColumn(
+    String day,
+    int moodIndex, {
+    double emojiSize = 40,
+  }) {
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    String imagePath =
+        moodIndex > 0 && moodIndex <= 8
+            ? 'lib/icons/$moodIndex.png'
+            : 'lib/icons/empty.png';
+
     // Check if this is today
     final today = _getCurrentDayName().substring(0, 3);
     final isToday = day == today.substring(0, 3);
-    
+
     return AnimatedContainer(
       duration: Duration(milliseconds: 300),
       padding: EdgeInsets.all(isToday ? 4 : 0),
-      decoration: isToday ? BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-      ) : null,
+      decoration:
+          isToday
+              ? BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              )
+              : null,
       child: Column(
         children: [
           Text(
@@ -888,7 +1140,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             style: TextStyle(
               fontSize: 16,
               fontWeight: isToday ? FontWeight.bold : FontWeight.w500,
-              color: isToday ? Colors.black : null,
+              color: isToday ? textColor : textColor?.withOpacity(0.8),
             ),
           ),
           SizedBox(height: 8),
@@ -898,33 +1150,34 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             transitionBuilder: (Widget child, Animation<double> animation) {
               return ScaleTransition(
                 scale: animation,
-                child: FadeTransition(
-                  opacity: animation,
-                  child: child,
-                ),
+                child: FadeTransition(opacity: animation, child: child),
               );
             },
             child: Container(
               key: ValueKey<int>(moodIndex),
               width: emojiSize,
               height: emojiSize,
-              decoration: isToday ? BoxDecoration(
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.5),
-                    blurRadius: 10,
-                    spreadRadius: 1,
-                  )
-                ],
-              ) : null,
-              child: moodIndex > 0 
-                  ? Image.asset(imagePath)
-                  : Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white54,
-                        shape: BoxShape.circle,
+              decoration:
+                  isToday
+                      ? BoxDecoration(
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.white.withOpacity(0.5),
+                            blurRadius: 10,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      )
+                      : null,
+              child:
+                  moodIndex > 0
+                      ? Image.asset(imagePath)
+                      : Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white54,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
             ),
           ),
         ],
@@ -940,10 +1193,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       if (!hasConnection) {
         return 'No internet connection. Check your connection and try again.';
       }
-      
+
       // Get user data from Hive
       final userBox = Hive.box('user_data');
-      
+
       // Prepare request payload
       Map<String, dynamic> requestData = {
         'anxiety_level': userBox.get('stressLevel', defaultValue: 5),
@@ -952,14 +1205,18 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         'unlock_count': _unlockCount,
         // Add any additional data needed by your model
       };
-      
+
       // Make API request
-      final response = await http.post(
-        Uri.parse('http://10.0.2.2:5000/get_custom_tip'), // Use 10.0.2.2 for Android emulator
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(requestData),
-      ).timeout(Duration(seconds: 10)); // Add a timeout
-      
+      final response = await http
+          .post(
+            Uri.parse(
+              'http://10.0.2.2:5000/get_custom_tip',
+            ), // Use 10.0.2.2 for Android emulator
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(requestData),
+          )
+          .timeout(Duration(seconds: 10)); // Add a timeout
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success']) {
@@ -976,38 +1233,58 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  // Add this method to load suggestions
-  Future<void> _loadMentalHealthSuggestions() async {
+  // Load mental health suggestions with caching
+  Future<void> _loadMentalHealthSuggestions({bool forceRefresh = false}) async {
     if (_isLoadingSuggestions) return; // Prevent multiple simultaneous calls
-    
+
     setState(() {
       _isLoadingSuggestions = true;
     });
-    
+
     try {
-      // Fetch a suggestion from custom model
-      final tip = await _fetchCustomTip();
+      // Store the latest user data before fetching suggestions
+      await _updateStoredUsageData();
       
-      // Create a list with the fetched suggestion and some backup ones
-      final suggestions = [
-        tip,
-        'Practice mindfulness or meditation for 10 minutes daily.',
-        'Talk to someone you trust about how you feel.',
-      ];
+      // Fetch tips from ApiService (which will handle the Hive data retrieval)
+      final tips = await ApiService.getGeminiTips(forceRefresh: forceRefresh);
       
+      // Update the UI with suggestions
       setState(() {
-        _mentalHealthSuggestions = suggestions;
+        _mentalHealthSuggestions = tips;
         _isLoadingSuggestions = false;
       });
+      
+      // Update the last fetch time display
+      _updateLastFetchTime();
+      
     } catch (e) {
+      print('Error loading mental health suggestions: $e');
       setState(() {
         _mentalHealthSuggestions = [
-          'Identify stress triggers and address them one at a time.',
-          'Practice mindfulness or meditation for 10 minutes daily.',
-          'Talk to someone you trust about how you feel.'
+          'Take regular breaks from your screen every 30 minutes.',
+          'Practice deep breathing exercises when feeling stressed.',
+          'Set boundaries for your device usage, especially before bedtime.'
         ];
         _isLoadingSuggestions = false;
       });
+      
+      // Still update last fetch time for error case
+      _updateLastFetchTime();
+    }
+  }
+  
+  // Update the display of when tips were last fetched
+  Future<void> _updateLastFetchTime() async {
+    try {
+      final lastFetchTime = await ApiService.getLastTipsFetchTime();
+      final isCacheExpired = await ApiService.isTipsCacheExpired();
+      
+      setState(() {
+        _lastTipsFetchTime = lastFetchTime;
+        _isCacheExpired = isCacheExpired;
+      });
+    } catch (e) {
+      print('Error updating last fetch time: $e');
     }
   }
 
@@ -1017,11 +1294,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       opacity: Tween<double>(begin: 0, end: 1).animate(
         CurvedAnimation(
           parent: _animationController,
-          curve: Interval(
-            delay,
-            delay + 0.4,
-            curve: Curves.easeInOut,
-          ),
+          curve: Interval(delay, delay + 0.4, curve: Curves.easeInOut),
         ),
       ),
       child: SlideTransition(
@@ -1031,11 +1304,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         ).animate(
           CurvedAnimation(
             parent: _animationController,
-            curve: Interval(
-              delay,
-              delay + 0.4,
-              curve: Curves.easeInOut,
-            ),
+            curve: Interval(delay, delay + 0.4, curve: Curves.easeInOut),
           ),
         ),
         child: child,
@@ -1044,10 +1313,23 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 
   // Add this method to your class
-  Widget _buildMoodChart() {
+  Widget _buildMoodChart({required bool isDarkMode}) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final chartLineColor = isDarkMode ? Colors.orange : Colors.white;
+    final chartBackgroundColor =
+        isDarkMode ? Color(0xFF1E1E1E) : Colors.transparent;
+
     // List of weekdays in order
-    final days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-    
+    final days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+
     // Generate data points for the chart
     List<FlSpot> spots = [];
     for (int i = 0; i < days.length; i++) {
@@ -1057,20 +1339,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         spots.add(FlSpot(i.toDouble(), moodValue.toDouble()));
       }
     }
-    
+
     return LineChart(
       LineChartData(
         gridData: FlGridData(show: false),
         titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          rightTitles: AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
+          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
             sideTitles: SideTitles(
               showTitles: true,
@@ -1078,16 +1354,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 if (value < 0 || value >= days.length) {
                   return const Text('');
                 }
-                
+
                 // Use abbreviated day names
                 final abbreviations = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-                
+
                 return Padding(
                   padding: const EdgeInsets.only(top: 8.0),
                   child: Text(
                     abbreviations[value.toInt()],
                     style: TextStyle(
-                      color: Colors.black,
+                      color: isDarkMode ? Colors.white70 : Colors.black,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                     ),
@@ -1107,7 +1383,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           LineChartBarData(
             spots: spots,
             isCurved: true,
-            color: Colors.white,
+            color: chartLineColor,
             barWidth: 4,
             isStrokeCapRound: true,
             dotData: FlDotData(
@@ -1117,58 +1393,75 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 final today = _getCurrentDayName();
                 final dayIndex = days.indexOf(today);
                 final isToday = dayIndex == spot.x.toInt();
-                
+
                 return FlDotCirclePainter(
                   radius: isToday ? 8 : 6,
-                  color: Colors.white,
+                  color: chartLineColor,
                   strokeWidth: isToday ? 3 : 2,
-                  strokeColor: isToday 
-                    ? Color.fromARGB(255, 255, 0, 0)
-                    : Color.fromARGB(255, 255, 64, 0),
+                  strokeColor:
+                      isToday ? primaryColor : primaryColor.withOpacity(0.7),
                 );
               },
             ),
             belowBarData: BarAreaData(
               show: true,
-              color: Color.fromARGB(100, 255, 255, 255),
-              gradient: LinearGradient(
-                colors: [
-                  Color.fromARGB(150, 255, 255, 255),
-                  Color.fromARGB(50, 255, 255, 255),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
+              color: chartBackgroundColor,
+              gradient:
+                  isDarkMode
+                      ? null
+                      : LinearGradient(
+                        colors: [
+                          Color.fromARGB(150, 255, 255, 255),
+                          Color.fromARGB(50, 255, 255, 255),
+                        ],
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                      ),
             ),
             curveSmoothness: 0.35,
           ),
         ],
         lineTouchData: LineTouchData(
           touchTooltipData: LineTouchTooltipData(
-          
             tooltipRoundedRadius: 12,
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((spot) {
                 final dayName = days[spot.x.toInt()];
                 final moodIndex = spot.y.toInt();
-                
+
                 // Map mood index to descriptive text
                 String moodText = 'Unknown';
-                switch(moodIndex) {
-                  case 1: moodText = 'Happy'; break;
-                  case 2: moodText = 'Sad'; break;
-                  case 3: moodText = 'Angry'; break;
-                  case 4: moodText = 'Anxious'; break;
-                  case 5: moodText = 'Sleepy'; break;
-                  case 6: moodText = 'Awkward'; break;
-                  case 7: moodText = 'Disappointed'; break;
-                  case 8: moodText = 'Content'; break;
+                switch (moodIndex) {
+                  case 1:
+                    moodText = 'Happy';
+                    break;
+                  case 2:
+                    moodText = 'Sad';
+                    break;
+                  case 3:
+                    moodText = 'Angry';
+                    break;
+                  case 4:
+                    moodText = 'Anxious';
+                    break;
+                  case 5:
+                    moodText = 'Sleepy';
+                    break;
+                  case 6:
+                    moodText = 'Awkward';
+                    break;
+                  case 7:
+                    moodText = 'Disappointed';
+                    break;
+                  case 8:
+                    moodText = 'Content';
+                    break;
                 }
-                
+
                 return LineTooltipItem(
                   '$dayName: $moodText',
                   TextStyle(
-                    color: Colors.black,
+                    color: isDarkMode ? Colors.white : Colors.black,
                     fontWeight: FontWeight.bold,
                   ),
                 );
@@ -1181,6 +1474,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       curve: Curves.easeInOutCubic,
     );
   }
+
   // Add this widget to create animatable cards
   Widget _animatedCard({
     required double width,
@@ -1188,10 +1482,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     required Widget child,
     VoidCallback? onTap,
   }) {
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+
     return StatefulBuilder(
       builder: (context, setState) {
         bool isHovered = false;
-        
+
         return GestureDetector(
           onTap: onTap,
           onTapDown: (_) => setState(() => isHovered = true),
@@ -1201,31 +1497,35 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             duration: Duration(milliseconds: 150),
             width: width,
             height: height,
-            transform: isHovered 
-                ? (Matrix4.identity()..scale(1.02))
-                : Matrix4.identity(),
+            transform:
+                isHovered
+                    ? (Matrix4.identity()..scale(1.02))
+                    : Matrix4.identity(),
             decoration: BoxDecoration(
-              color: Color.fromARGB(168, 254, 140, 0),
+              color: secondaryColor, // Use dynamic secondary color
               borderRadius: BorderRadius.circular(16),
-              boxShadow: isHovered
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 8,
-                        offset: Offset(0, 4),
-                      )
-                    ]
-                  : [],
+              boxShadow:
+                  isHovered
+                      ? [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: Offset(0, 4),
+                        ),
+                      ]
+                      : [],
             ),
             child: child,
           ),
         );
-      }
+      },
     );
   }
 
   // Helper method to build the drawer
   Widget _buildDrawer() {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+
     return AnimatedPositioned(
       duration: Duration(milliseconds: 300),
       curve: Curves.easeInOut,
@@ -1235,7 +1535,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       width: 250,
       child: Container(
         decoration: BoxDecoration(
-          color: Color.fromARGB(245, 255, 128, 64),
+          color: primaryColor.withOpacity(
+            0.95,
+          ), // Use theme primary color with opacity
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.3),
@@ -1282,7 +1584,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                 title: 'Settings',
                 onTap: () {
                   setState(() => _isDrawerOpen = false);
-                  // Navigator.pushNamed(context, '/settings');
+                  Navigator.pushNamed(context, '/settings');
                 },
               ),
             ],
@@ -1326,44 +1628,47 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     if (!_isDrawerOpen) {
       return const SizedBox.shrink();
     }
-    
+
     return Positioned.fill(
       // Position the tap area to start after the drawer
       left: 250, // Same width as the drawer
       child: GestureDetector(
         onTap: () => setState(() => _isDrawerOpen = false),
-        child: Container(
-          color: Colors.black.withOpacity(0),
-        ),
+        child: Container(color: Colors.black.withOpacity(0)),
       ),
     );
   }
 
   // Add this missing method to your class
   Widget _moodSuggestionButton(String text) {
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+
     return InkWell(
       onTap: () {
         HapticFeedback.lightImpact();
-        _saveMoodDescription(text);
+        _useSuggestedMood(text);
       },
       child: Container(
         width: text.length > 10 ? 120 : 90,
         height: 30,
         decoration: BoxDecoration(
-          color: _todayMoodDescription == text 
-            ? Color.fromARGB(168, 255, 110, 0)
-            : Color.fromARGB(118, 255, 140, 0),
+          color:
+              _todayMoodDescription == text
+                  ? secondaryColor
+                  : secondaryColor.withOpacity(0.7),
           borderRadius: BorderRadius.all(Radius.circular(16)),
         ),
         child: Center(
           child: Text(
             text,
             style: TextStyle(
-              color: Colors.black,
+              color: textColor ?? Colors.black,
               fontSize: 16,
-              fontWeight: _todayMoodDescription == text 
-                ? FontWeight.bold
-                : FontWeight.normal,
+              fontWeight:
+                  _todayMoodDescription == text
+                      ? FontWeight.bold
+                      : FontWeight.normal,
               fontFamily: 'Inter',
             ),
           ),
@@ -1406,8 +1711,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       }
       return lastPart;
     }
-    
+
     // Fallback if unable to extract meaningful name
     return packageName;
+  }
+
+  // Update the local storage when screen time data is fetched
+  Future<void> _updateStoredUsageData() async {
+    try {
+      final userBox = await Hive.openBox('user_data');
+      await userBox.put('screen_time', _screenTime);
+      await userBox.put('unlock_count', _unlockCount);
+      await userBox.put('most_used_app', _mostUsedApp);
+    } catch (e) {
+      print('Error updating stored usage data: $e');
+    }
   }
 }

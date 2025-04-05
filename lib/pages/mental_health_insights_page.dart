@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
@@ -6,6 +8,7 @@ import 'package:markdown_widget/markdown_widget.dart';
 import 'dart:developer' as developer;
 import 'dart:async';
 import 'package:mindtrack/utils/debug_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MentalHealthInsightsPage extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -28,6 +31,12 @@ class _MentalHealthInsightsPageState extends State<MentalHealthInsightsPage> {
   bool _isRetrying = false;
   int _retryAttempts = 0;
   final int _maxRetryAttempts = 2;
+
+  // Caching variables
+  static const String _cacheKeyInsights = 'cached_mental_health_insights';
+  static const String _cacheKeyTimestamp = 'cached_insights_timestamp';
+  static const String _cacheKeyMode = 'cached_insights_mode';
+  static const Duration _cacheExpiration = Duration(hours: 6);
 
   // Connection status indicators
   double _progressValue = 0.0;
@@ -84,64 +93,134 @@ class _MentalHealthInsightsPageState extends State<MentalHealthInsightsPage> {
     });
 
     try {
-      DebugHelper.log("Fetching mental health insights from backend");
-      DebugHelper.log("Attempt ${_retryAttempts + 1} of ${_maxRetryAttempts + 1}");
-
-      // Try first your PC's actual IP address for physical device, then emulator/localhost addresses
-      final urls = [
-        'http://192.168.1.41:5000/get_mental_health_insights',  // PC's actual IP
-        'http://10.0.2.2:5000/get_mental_health_insights',      // Emulator
-        'http://127.0.0.1:5000/get_mental_health_insights'      // Localhost
-      ];
+      bool shouldFetchFromBackend = true;
       
-      final url = urls[_retryAttempts % urls.length]; // Cycle through URLs on retry
-      
-      DebugHelper.log("Connecting to: $url");
-      
-      // Use a shorter timeout for first attempt, longer for retries
-      final timeout = _retryAttempts == 0 
-          ? const Duration(seconds: 10) 
-          : const Duration(seconds: 20);
-
-      // Create a client with timeout
-      final client = http.Client();
+      // Try to get cached insights with proper error handling
       try {
-        final response = await client.post(
-          Uri.parse(url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(widget.userData),
-        ).timeout(timeout);
+        final prefs = await SharedPreferences.getInstance();
+        final cachedInsights = prefs.getString(_cacheKeyInsights);
+        final cachedMode = prefs.getString(_cacheKeyMode);
+        final cachedTimestampMillis = prefs.getInt(_cacheKeyTimestamp);
         
-        // Complete the progress animation
-        setState(() {
-          _progressValue = 1.0;
-          _statusMessage = 'Insights received!';
-        });
-
-        DebugHelper.log("Got response with status code: ${response.statusCode}");
-        
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          if (data['success']) {
-            DebugHelper.log("Successfully received insights, mode: ${data['mode']}");
+        // If we have cached insights, check if they're still valid
+        if (cachedInsights != null && cachedTimestampMillis != null) {
+          final cachedTime = DateTime.fromMillisecondsSinceEpoch(cachedTimestampMillis);
+          final now = DateTime.now();
+          final difference = now.difference(cachedTime);
+          
+          // If cache is still valid (less than 6 hours old), use it
+          if (difference < _cacheExpiration) {
+            DebugHelper.log("Using cached insights from ${difference.inMinutes} minutes ago");
             setState(() {
-              _insights = data['insights'];
-              _mode = data['mode'] ?? 'unknown';
+              _insights = cachedInsights;
+              _mode = cachedMode ?? 'unknown';
               _isLoading = false;
               _isRetrying = false;
               _retryAttempts = 0;
+              _progressTimer?.cancel();
             });
+            return; // Exit early since we're using cached data
           } else {
-            throw Exception(data['error'] ?? 'Unknown error occurred');
+            DebugHelper.log("Cached insights expired (${difference.inHours} hours old), fetching new data");
+            shouldFetchFromBackend = true;
           }
         } else {
-          throw Exception('Failed to load insights: ${response.statusCode}');
+          DebugHelper.log("No cached insights found, fetching from backend");
+          shouldFetchFromBackend = true;
         }
-      } finally {
-        client.close();
+      } catch (e) {
+        DebugHelper.error("Error reading cache", e);
+        // Continue with backend fetch if cache read fails
+        shouldFetchFromBackend = true;
+      }
+
+      if (shouldFetchFromBackend) {
+        DebugHelper.log("Fetching mental health insights from backend");
+        DebugHelper.log("Attempt ${_retryAttempts + 1} of ${_maxRetryAttempts + 1}");
+
+        // Try first your PC's actual IP address for physical device, then emulator/localhost addresses
+        final urls = [
+          'http://192.168.1.41:5000/get_mental_health_insights',  // PC's actual IP
+          'http://10.0.2.2:5000/get_mental_health_insights',      // Emulator
+          'http://127.0.0.1:5000/get_mental_health_insights'      // Localhost
+        ];
+        
+        final url = urls[_retryAttempts % urls.length]; // Cycle through URLs on retry
+        
+        DebugHelper.log("Connecting to: $url");
+        
+        // Use a shorter timeout for first attempt, longer for retries
+        final timeout = _retryAttempts == 0 
+            ? const Duration(seconds: 10) 
+            : const Duration(seconds: 20);
+
+        // Create a client with timeout
+        final client = http.Client();
+        try {
+          final response = await client.post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(widget.userData),
+          ).timeout(timeout);
+          
+          // Complete the progress animation
+          setState(() {
+            _progressValue = 1.0;
+            _statusMessage = 'Insights received!';
+          });
+
+          DebugHelper.log("Got response with status code: ${response.statusCode}");
+          
+          // Process the response using our helper method
+          final data = await _processServerResponse(response);
+          
+          // Cache the new insights
+          final insights = data['insights'];
+          final mode = data['mode'] ?? 'unknown';
+          final now = DateTime.now().millisecondsSinceEpoch;
+          
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(_cacheKeyInsights, insights);
+          await prefs.setString(_cacheKeyMode, mode);
+          await prefs.setInt(_cacheKeyTimestamp, now);
+          DebugHelper.log("Cached new insights with timestamp: $now");
+          
+          setState(() {
+            _insights = insights;
+            _mode = mode;
+            _isLoading = false;
+            _isRetrying = false;
+            _retryAttempts = 0;
+            _progressTimer?.cancel();
+          });
+        } finally {
+          client.close();
+        }
       }
     } catch (e) {
       DebugHelper.error("Error fetching insights", e);
+      
+      // Try to load cached insights as a fallback, even if they're expired
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cachedInsights = prefs.getString(_cacheKeyInsights);
+        final cachedMode = prefs.getString(_cacheKeyMode);
+        
+        if (cachedInsights != null) {
+          DebugHelper.log("Using expired cached insights as fallback after fetch error");
+          setState(() {
+            _insights = cachedInsights;
+            _mode = cachedMode ?? 'offline';
+            _isLoading = false;
+            _progressTimer?.cancel();
+            _isRetrying = false;
+            _retryAttempts = 0;
+          });
+          return;
+        }
+      } catch (cacheError) {
+        DebugHelper.error("Failed to read cache as fallback", cacheError);
+      }
       
       // Retry logic
       if (_retryAttempts < _maxRetryAttempts) {
@@ -174,7 +253,7 @@ class _MentalHealthInsightsPageState extends State<MentalHealthInsightsPage> {
       });
     }
   }
-  
+
   // Extract offline mode to a separate method to avoid code duplication
   void _useOfflineMode() {
     setState(() {
@@ -205,23 +284,65 @@ Create phone-free zones or times in your daily routine to disconnect.
     });
   }
 
+  // This method deserializes and validates the response from the server
+  Future<Map<String, dynamic>> _processServerResponse(http.Response response) async {
+    try {
+      // First validate the response status code
+      if (response.statusCode != 200) {
+        throw Exception('Server returned status code ${response.statusCode}');
+      }
+      
+      // Parse the response body
+      final data = jsonDecode(response.body);
+      
+      // Log the received data structure for debugging
+      DebugHelper.log("Received response data: ${data.toString().substring(0, min(100, data.toString().length))}...");
+      
+      // Validate response structure
+      if (!data.containsKey('success')) {
+        throw Exception('Invalid response format: missing success field');
+      }
+      
+      // Check if the request was successful according to the response
+      final success = data['success'];
+      if (success != true) {
+        final errorMsg = data['error'] ?? 'Unknown error occurred';
+        throw Exception('Request failed: $errorMsg');
+      }
+      
+      // Validate required fields
+      if (!data.containsKey('insights')) {
+        throw Exception('Invalid response format: missing insights field');
+      }
+      
+      return data;
+    } catch (e) {
+      DebugHelper.error("Error processing server response", e);
+      rethrow; // Re-throw the exception to be handled by the caller
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+    
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: backgroundColor,
       appBar: AppBar(
         title: Text('Mental Health Insights'),
-        backgroundColor: Color.fromARGB(192, 255, 64, 0),
+        backgroundColor: primaryColor,
         elevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.dark,
       ),
       body: SafeArea(
-        child: _buildBody(),
+        child: _buildBody(primaryColor, textColor),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildBody(Color primaryColor, Color? textColor) {
     if (_isLoading) {
       return Center(
         child: Padding(
@@ -235,7 +356,7 @@ Create phone-free zones or times in your daily routine to disconnect.
                 value: _progressValue,
                 minHeight: 8,
                 backgroundColor: Colors.grey[300],
-                valueColor: AlwaysStoppedAnimation<Color>(Color.fromARGB(192, 255, 64, 0)),
+                valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
                 borderRadius: BorderRadius.circular(4),
               ),
               SizedBox(height: 10),
@@ -244,12 +365,12 @@ Create phone-free zones or times in your daily routine to disconnect.
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
-                  color: Colors.grey[700],
+                  color: textColor?.withOpacity(0.7),
                 ),
               ),
               SizedBox(height: 32),
               CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(Color.fromARGB(192, 255, 64, 0)),
+                valueColor: AlwaysStoppedAnimation<Color>(primaryColor),
               ),
               SizedBox(height: 24),
               Text(
@@ -258,7 +379,7 @@ Create phone-free zones or times in your daily routine to disconnect.
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
-                  color: Colors.black87,
+                  color: textColor,
                 ),
               ),
               if (_isRetrying) ...[
@@ -299,7 +420,7 @@ Create phone-free zones or times in your daily routine to disconnect.
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black,
+                      color: textColor,
                     ),
                   ),
                   SizedBox(height: 10),
@@ -309,7 +430,7 @@ Create phone-free zones or times in your daily routine to disconnect.
                       'We had trouble connecting to our recommendation service. This might be due to network issues.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Colors.black87,
+                        color: textColor?.withOpacity(0.8),
                       ),
                     ),
                   ),
@@ -346,10 +467,10 @@ Create phone-free zones or times in your daily routine to disconnect.
                           _fetchInsights();
                         },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(168, 254, 140, 0),
+                          backgroundColor: primaryColor,
                           padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                         ),
-                        child: Text('Try Again'),
+                        child: Text('Try Again' , style: TextStyle(fontSize: 16, color: Colors.white)),
                       ),
                       SizedBox(width: 16),
                       TextButton(
@@ -382,13 +503,13 @@ Create phone-free zones or times in your daily routine to disconnect.
               Container(
                 padding: EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Color.fromARGB(168, 254, 140, 0).withOpacity(0.2),
+                  color: primaryColor.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Row(
                   children: [
                     Icon(Icons.lightbulb_outline, 
-                      color: Color.fromARGB(255, 255, 100, 0),
+                      color: primaryColor,
                       size: 30,
                     ),
                     SizedBox(width: 16),
@@ -401,6 +522,7 @@ Create phone-free zones or times in your daily routine to disconnect.
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w500,
+                              color: textColor,
                             ),
                           ),
                           if (_mode == 'offline')
@@ -437,7 +559,7 @@ Create phone-free zones or times in your daily routine to disconnect.
               
               // FIX: Use direct rendering for markdown content instead of the MarkdownWidget
               // This helps avoid layout issues
-              _buildMarkdownContent(_insights),
+              _buildMarkdownContent(_insights, textColor),
               
               SizedBox(height: 40),
               Center(
@@ -446,10 +568,10 @@ Create phone-free zones or times in your daily routine to disconnect.
                     Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color.fromARGB(168, 254, 140, 0),
+                    backgroundColor: primaryColor,
                     padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   ),
-                  child: Text('Back to Home', style: TextStyle(fontSize: 16)),
+                  child: Text('Back to Home', style: TextStyle(fontSize: 16, color: Colors.white)),
                 ),
               ),
               SizedBox(height: 24),
@@ -461,49 +583,221 @@ Create phone-free zones or times in your daily routine to disconnect.
   }
   
   // Custom markdown rendering to avoid layout issues
-  Widget _buildMarkdownContent(String markdown) {
+  Widget _buildMarkdownContent(String markdown, Color? textColor) {
     try {
       // Simple markdown parsing for robust rendering
       final lines = markdown.split('\n');
       List<Widget> content = [];
+      final primaryColor = Theme.of(context).colorScheme.primary;
+      bool inList = false;
+      List<Widget> listItems = [];
       
       for (int i = 0; i < lines.length; i++) {
         final line = lines[i].trim();
         
-        // Handle headings
+        // Handle headings (H1)
         if (line.startsWith('# ')) {
+          // If we were in a list, add the accumulated list items first
+          if (inList) {
+            content.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: listItems,
+            ));
+            listItems = [];
+            inList = false;
+          }
+          
           content.add(
             Padding(
-              padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+              padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
               child: Text(
                 line.substring(2),
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 26,
                   fontWeight: FontWeight.bold,
-                  color: Colors.black,
+                  color: primaryColor.withOpacity(0.9),
                 ),
               ),
             )
           );
         } 
-        // Handle subheadings
+        // Handle subheadings (H2)
         else if (line.startsWith('## ')) {
+          // If we were in a list, add the accumulated list items first
+          if (inList) {
+            content.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: listItems,
+            ));
+            listItems = [];
+            inList = false;
+          }
+          
           content.add(
             Padding(
-              padding: const EdgeInsets.only(top: 14.0, bottom: 6.0),
+              padding: const EdgeInsets.only(top: 20.0, bottom: 12.0),
               child: Text(
                 line.substring(3),
                 style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color.fromARGB(255, 255, 100, 0),
+                  fontSize: 22,
+                  fontWeight: FontWeight.w600,
+                  color: primaryColor,
                 ),
               ),
             )
           );
         }
-        // Handle paragraphs (any non-empty line that isn't a heading)
+        // Handle H3
+        else if (line.startsWith('### ')) {
+          // If we were in a list, add the accumulated list items first
+          if (inList) {
+            content.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: listItems,
+            ));
+            listItems = [];
+            inList = false;
+          }
+          
+          content.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+              child: Text(
+                line.substring(4),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: primaryColor.withOpacity(0.8),
+                ),
+              ),
+            )
+          );
+        }
+        // Handle bullet points
+        else if (line.startsWith('- ') || line.startsWith('* ')) {
+          inList = true;
+          
+          // Get the bullet text content
+          final bulletText = line.substring(2);
+          
+          listItems.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 4.0, bottom: 4.0, left: 8.0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0, right: 8.0),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      bulletText,
+                      style: TextStyle(
+                        fontSize: 16,
+                        height: 1.5,
+                        color: textColor?.withOpacity(0.9),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          );
+        }
+        // Handle numbered lists
+        else if (RegExp(r'^\d+\.\s').hasMatch(line)) {
+          inList = true;
+          
+          // Extract the number and text
+          final match = RegExp(r'^(\d+)\.\s(.+)$').firstMatch(line);
+          if (match != null) {
+            final number = match.group(1);
+            final text = match.group(2);
+            
+            listItems.add(
+              Padding(
+                padding: const EdgeInsets.only(top: 4.0, bottom: 4.0, left: 8.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 20,
+                      margin: EdgeInsets.only(right: 8.0, top: 4.0),
+                      child: Text(
+                        '$number.',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: primaryColor,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        text!,
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.5,
+                          color: textColor?.withOpacity(0.9),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            );
+          }
+        }
+        // Handle bold text (**text**)
+        else if (line.contains('**')) {
+          // If we were in a list, add the accumulated list items first
+          if (inList) {
+            content.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: listItems,
+            ));
+            listItems = [];
+            inList = false;
+          }
+          
+          // Process bold text
+          final parts = _processBoldText(line, textColor);
+          content.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 6.0, bottom: 6.0),
+              child: RichText(
+                text: TextSpan(
+                  children: parts,
+                  style: TextStyle(
+                    fontSize: 16,
+                    height: 1.5,
+                    color: textColor?.withOpacity(0.9),
+                  ),
+                ),
+              ),
+            )
+          );
+        }
+        // Handle paragraphs (any non-empty line that isn't a heading or list)
         else if (line.isNotEmpty) {
+          // If we were in a list, add the accumulated list items first
+          if (inList) {
+            content.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: listItems,
+            ));
+            listItems = [];
+            inList = false;
+          }
+          
           content.add(
             Padding(
               padding: const EdgeInsets.only(top: 6.0, bottom: 6.0),
@@ -512,12 +806,49 @@ Create phone-free zones or times in your daily routine to disconnect.
                 style: TextStyle(
                   fontSize: 16,
                   height: 1.5,
-                  color: Colors.black87,
+                  color: textColor?.withOpacity(0.9),
                 ),
               ),
             )
           );
         }
+        // Handle horizontal rule
+        else if (line.startsWith('---') || line.startsWith('***')) {
+          // If we were in a list, add the accumulated list items first
+          if (inList) {
+            content.add(Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: listItems,
+            ));
+            listItems = [];
+            inList = false;
+          }
+          
+          content.add(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16.0),
+              child: Container(
+                height: 1,
+                color: Colors.grey.withOpacity(0.5),
+              ),
+            )
+          );
+        }
+        // Add empty line for spacing between paragraphs
+        else if (line.isEmpty) {
+          // For empty lines, add spacing but don't end lists
+          if (!inList) {
+            content.add(SizedBox(height: 8));
+          }
+        }
+      }
+      
+      // Add any remaining list items
+      if (inList && listItems.isNotEmpty) {
+        content.add(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: listItems,
+        ));
       }
       
       // Fallback if no content was parsed
@@ -527,15 +858,21 @@ Create phone-free zones or times in your daily routine to disconnect.
             padding: const EdgeInsets.all(16.0),
             child: Text(
               markdown,
-              style: TextStyle(fontSize: 16, height: 1.5),
+              style: TextStyle(fontSize: 16, height: 1.5, color: textColor),
             ),
           )
         );
       }
       
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: content,
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: content,
+        ),
       );
     } catch (e) {
       // If any error occurs during markdown parsing, show raw text
@@ -544,10 +881,45 @@ Create phone-free zones or times in your daily routine to disconnect.
         padding: const EdgeInsets.all(16.0),
         child: Text(
           _insights,
-          style: TextStyle(fontSize: 16, height: 1.5),
+          style: TextStyle(fontSize: 16, height: 1.5, color: textColor),
         ),
       );
     }
+  }
+  
+  // Helper method to process bold text in markdown
+  List<TextSpan> _processBoldText(String text, Color? textColor) {
+    List<TextSpan> spans = [];
+    final boldPattern = RegExp(r'\*\*(.*?)\*\*');
+    
+    int lastMatchEnd = 0;
+    
+    // Find all bold text patterns
+    for (final match in boldPattern.allMatches(text)) {
+      // Add normal text before the match
+      if (match.start > lastMatchEnd) {
+        spans.add(TextSpan(
+          text: text.substring(lastMatchEnd, match.start),
+        ));
+      }
+      
+      // Add the bold text
+      spans.add(TextSpan(
+        text: match.group(1),
+        style: TextStyle(fontWeight: FontWeight.bold)
+      ));
+      
+      lastMatchEnd = match.end;
+    }
+    
+    // Add any remaining text after the last match
+    if (lastMatchEnd < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastMatchEnd),
+      ));
+    }
+    
+    return spans;
   }
   
   // Backup method for when MarkdownWidget works

@@ -73,26 +73,32 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    // Get theme colors
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    
     return Scaffold(
       appBar: AppBar(
         title: Text('Unlock Count', style: TextStyle(color: Colors.white)),
-        backgroundColor: AppColors.primary,
+        backgroundColor: primaryColor,
         elevation: 0,
       ),
       body: _isLoading 
-        ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+        ? Center(child: CircularProgressIndicator(color: primaryColor))
         : _errorMessage.isNotEmpty
           ? Center(child: Text(_errorMessage, style: TextStyle(color: Colors.red)))
-          : _buildUnlockContent(),
+          : _buildUnlockContent(primaryColor, secondaryColor, textColor),
       floatingActionButton: FloatingActionButton(
         onPressed: _fetchPhoneUnlockCount,
-        backgroundColor: AppColors.primary,
+        backgroundColor: primaryColor,
         child: Icon(Icons.refresh, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildUnlockContent() {
+  Widget _buildUnlockContent(Color primaryColor, Color secondaryColor, Color? textColor) {
     if (_unlockData.isEmpty) {
       return Center(child: Text('No unlock data available. Please try refreshing.'));
     }
@@ -136,14 +142,14 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
             margin: EdgeInsets.all(16.0),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [AppColors.primary, AppColors.secondary],
+                colors: [primaryColor, secondaryColor],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.3),
+                  color: primaryColor.withOpacity(0.3),
                   blurRadius: 10,
                   offset: Offset(0, 5),
                 ),
@@ -195,7 +201,7 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: primaryColor,
                 ),
               ),
               Spacer(),
@@ -210,14 +216,14 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppColors.secondary.withOpacity(0.2),
+                    color: secondaryColor.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     'Peak: ${_formatHour(peakHour)} ($peakCount)',
                     style: TextStyle(
                       fontSize: 14,
-                      color: AppColors.primary,
+                      color: primaryColor,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -272,7 +278,7 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
                             _formatHour(index),
                             style: TextStyle(
                               fontWeight: FontWeight.w500,
-                              color: index == peakHour ? AppColors.primary : Colors.black87,
+                              color: index == peakHour ? primaryColor : textColor,
                             ),
                           ),
                         ),
@@ -298,8 +304,8 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
                                       decoration: BoxDecoration(
                                         gradient: LinearGradient(
                                           colors: index == peakHour 
-                                            ? [AppColors.primary, AppColors.secondary]
-                                            : [AppColors.primary.withOpacity(0.6), AppColors.secondary.withOpacity(0.6)],
+                                            ? [primaryColor, secondaryColor]
+                                            : [primaryColor.withOpacity(0.6), secondaryColor.withOpacity(0.6)],
                                         ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
@@ -318,7 +324,7 @@ class _UnlockCountPageState extends State<UnlockCountPage> with SingleTickerProv
                             textAlign: TextAlign.right,
                             style: TextStyle(
                               fontWeight: index == peakHour ? FontWeight.bold : FontWeight.normal,
-                              color: index == peakHour ? AppColors.primary : Colors.black87,
+                              color: index == peakHour ? primaryColor : textColor,
                             ),
                           ),
                         ),

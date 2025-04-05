@@ -46,8 +46,10 @@ class _LoadingPageState extends State<LoadingPage> with SingleTickerProviderStat
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    
     return Scaffold(
-      backgroundColor: Color(0xC4FF4000),
+      backgroundColor: primaryColor,
       body: Center(
         child: FadeTransition(
           opacity: _animation,

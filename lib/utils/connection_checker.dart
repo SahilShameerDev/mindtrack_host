@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:async';
 import 'package:mindtrack/utils/debug_helper.dart';
+import 'dart:io';
 
 class ConnectionChecker {
   // Using different URLs depending on device type (emulator vs physical)
@@ -11,11 +12,10 @@ class ConnectionChecker {
   /// Check if the device has an internet connection
   static Future<bool> hasConnection() async {
     try {
-      final response = await http.get(Uri.parse('https://www.google.com'))
-          .timeout(const Duration(seconds: 3));
-      return response.statusCode == 200;
-    } catch (e) {
-      DebugHelper.log("Internet connection check failed: $e");
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(seconds: 5));
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } catch (_) {
       return false;
     }
   }

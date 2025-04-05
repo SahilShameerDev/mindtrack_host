@@ -46,8 +46,11 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   Widget build(BuildContext context) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final textColor = Colors.white; // Keep text color white for better contrast
+
     return Scaffold(
-      backgroundColor: Color(0xC4FF4000),
+      backgroundColor: primaryColor,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.all(24.0),
@@ -60,7 +63,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 Text(
                   'Welcome to MindTrack',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: textColor,
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
                   ),
@@ -69,7 +72,7 @@ class _RegisterPageState extends State<RegisterPage> {
                 Text(
                   'Please tell us about yourself',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: textColor,
                     fontSize: 18,
                   ),
                 ),
@@ -124,7 +127,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
-                      foregroundColor: Color(0xC4FF4000),
+                      foregroundColor: primaryColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -180,6 +183,8 @@ class _RegisterPageState extends State<RegisterPage> {
     required List<String> items,
     required void Function(String?) onChanged,
   }) {
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -205,7 +210,7 @@ class _RegisterPageState extends State<RegisterPage> {
               }).toList(),
               onChanged: onChanged,
               isExpanded: true,
-              dropdownColor: Color(0xC4FF4000),
+              dropdownColor: primaryColor,
               style: TextStyle(color: Colors.white),
             ),
           ),

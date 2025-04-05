@@ -1,13 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// Custom Colors - copied from original to maintain consistency
-class AppColors {
-  static const Color primary = Color(0xC4FF4000); // #FF4000 with 77% alpha
-  static const Color secondary = Color(0xFFFFB357); // #FFB357
-  static const Color background = Colors.white;
-}
-
 // Screen Time Page
 class ScreenTimePage extends StatefulWidget {
   final MethodChannel platform;
@@ -90,26 +83,32 @@ class _ScreenTimePageState extends State<ScreenTimePage> with SingleTickerProvid
 
   @override
   Widget build(BuildContext context) {
+    // Get theme colors
+    final primaryColor = Theme.of(context).colorScheme.primary;
+    final secondaryColor = Theme.of(context).colorScheme.secondary;
+    final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+    final textColor = Theme.of(context).textTheme.bodyLarge?.color;
+    
     return Scaffold(
       appBar: AppBar(
         title: Text('Screen Time', style: TextStyle(color: Colors.white)),
-        backgroundColor: AppColors.primary,
+        backgroundColor: primaryColor,
         elevation: 0,
       ),
       body: _isLoading 
-        ? Center(child: CircularProgressIndicator(color: AppColors.primary))
+        ? Center(child: CircularProgressIndicator(color: primaryColor))
         : _errorMessage.isNotEmpty
           ? Center(child: Text(_errorMessage, style: TextStyle(color: Colors.red)))
-          : _buildScreenTimeContent(),
+          : _buildScreenTimeContent(primaryColor, secondaryColor, textColor),
       floatingActionButton: FloatingActionButton(
         onPressed: _fetchScreenTimeData,
-        backgroundColor: AppColors.primary,
+        backgroundColor: primaryColor,
         child: Icon(Icons.refresh, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildScreenTimeContent() {
+  Widget _buildScreenTimeContent(Color primaryColor, Color secondaryColor, Color? textColor) {
     if (_screenTimeData.isEmpty) {
       return Center(child: Text('No screen time data available'));
     }
@@ -135,14 +134,14 @@ class _ScreenTimePageState extends State<ScreenTimePage> with SingleTickerProvid
             margin: EdgeInsets.all(16.0),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [AppColors.primary, AppColors.secondary],
+                colors: [primaryColor, secondaryColor],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.primary.withOpacity(0.3),
+                  color: primaryColor.withOpacity(0.3),
                   blurRadius: 10,
                   offset: Offset(0, 5),
                 ),
@@ -229,7 +228,7 @@ class _ScreenTimePageState extends State<ScreenTimePage> with SingleTickerProvid
                               Row(
                                 children: [
                                   CircleAvatar(
-                                    backgroundColor: AppColors.secondary,
+                                    backgroundColor: secondaryColor,
                                     child: Text(
                                       app['appName'].toString()[0],
                                       style: TextStyle(color: Colors.white),
@@ -242,11 +241,18 @@ class _ScreenTimePageState extends State<ScreenTimePage> with SingleTickerProvid
                                       children: [
                                         Text(
                                           app['appName'].toString(),
-                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold, 
+                                            fontSize: 16,
+                                            color: textColor,
+                                          ),
                                         ),
                                         Text(
                                           app['packageName'].toString(),
-                                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                                          style: TextStyle(
+                                            fontSize: 12, 
+                                            color: Colors.grey
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
@@ -256,7 +262,7 @@ class _ScreenTimePageState extends State<ScreenTimePage> with SingleTickerProvid
                                     _formatDuration(usageTime),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
-                                      color: AppColors.primary,
+                                      color: primaryColor,
                                     ),
                                   ),
                                 ],
@@ -283,7 +289,7 @@ class _ScreenTimePageState extends State<ScreenTimePage> with SingleTickerProvid
                                           height: 8,
                                           decoration: BoxDecoration(
                                             gradient: LinearGradient(
-                                              colors: [AppColors.primary, AppColors.secondary],
+                                              colors: [primaryColor, secondaryColor],
                                             ),
                                             borderRadius: BorderRadius.circular(4),
                                           ),

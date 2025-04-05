@@ -4,11 +4,13 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:mindtrack/pages/home_pages.dart';
 import 'package:mindtrack/pages/profile_page.dart';
 import 'package:mindtrack/pages/screen_time.dart';
+import 'package:mindtrack/pages/settings_page.dart';
 import 'package:mindtrack/pages/unlock_count.dart';
 import 'package:mindtrack/pages/register_page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 import 'dart:developer' as developer;
 import 'package:mindtrack/utils/debug_helper.dart';
+import 'package:mindtrack/services/theme_service.dart';
 
 void main() async {
   // Add a try-catch block to handle any initialization errors
@@ -36,6 +38,7 @@ void main() async {
     await Future.wait([
       Hive.openBox('user_data'),
       Hive.openBox('mood_data'),
+      Hive.openBox('app_settings'),
     ]);
     DebugHelper.log("Hive boxes opened successfully");
     
@@ -83,32 +86,82 @@ void main() async {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Since we already opened the box in main(), we can directly access it here
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  ThemeMode _themeMode = ThemeMode.light;
+  bool _isLoading = true;
+  bool _isRegistered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
     try {
+      // Load user registration status
       final userBox = Hive.box('user_data');
       final isRegistered = userBox.get('isRegistered', defaultValue: false);
-      DebugHelper.log("User registered status: $isRegistered");
       
+      // Load theme mode
+      final themeMode = await ThemeService.getThemeMode();
+      
+      if (mounted) {
+        setState(() {
+          _isRegistered = isRegistered;
+          _themeMode = themeMode;
+          _isLoading = false;
+        });
+      }
+      
+      DebugHelper.log("User registered status: $_isRegistered");
+      DebugHelper.log("Theme mode: ${_themeMode == ThemeMode.dark ? 'dark' : 'light'}");
+    } catch (e, stackTrace) {
+      DebugHelper.error("Error initializing app", e, stackTrace);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+  
+  // Update theme mode
+  void _updateThemeMode(ThemeMode mode) {
+    setState(() {
+      _themeMode = mode;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      // Show loading screen while initializing
       return MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          primaryColor: Color.fromARGB(192, 255, 64, 0),
-          colorScheme: ColorScheme.light(
-            primary: Color.fromARGB(192, 255, 64, 0),
-            secondary: Color.fromARGB(168, 254, 140, 0),
+        home: Scaffold(
+          backgroundColor: ThemeService.primaryLight,
+          body: Center(
+            child: CircularProgressIndicator(color: Colors.white),
           ),
-          appBarTheme: AppBarTheme(
-            backgroundColor: Color.fromARGB(192, 255, 64, 0),
-            elevation: 0,
-          ),
-          fontFamily: 'Inter',
         ),
-        home: isRegistered ? const HomePage() : const RegisterPage(),
+      );
+    }
+  
+    try {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        themeMode: _themeMode,
+        theme: ThemeService.getLightTheme(),
+        darkTheme: ThemeService.getDarkTheme(),
+        home: _isRegistered ? const HomePage() : const RegisterPage(),
         routes: {
           '/screen-time': (context) => ScreenTimePage(
                 platform: const MethodChannel('com.example.screen_time_tracker/screen_time'),
@@ -117,6 +170,9 @@ class MyApp extends StatelessWidget {
                 platform: const MethodChannel('com.example.screen_time_tracker/screen_time'),
               ),
           '/profile': (context) => const ProfilePage(),
+          '/settings': (context) => SettingsPage(
+                onThemeChanged: _updateThemeMode,
+              ),
         },
       );
     } catch (e, stackTrace) {
