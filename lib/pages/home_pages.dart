@@ -1206,16 +1206,16 @@ class _HomePageState extends State<HomePage>
         // Add any additional data needed by your model
       };
 
-      // Make API request
+      // Make API request to the hosted backend
       final response = await http
           .post(
             Uri.parse(
-              'http://10.0.2.2:5000/get_custom_tip',
-            ), // Use 10.0.2.2 for Android emulator
+              'https://mindtrack-backend.onrender.com/get_custom_tip',
+            ),
             headers: {'Content-Type': 'application/json'},
             body: json.encode(requestData),
           )
-          .timeout(Duration(seconds: 10)); // Add a timeout
+          .timeout(Duration(seconds: 15)); // Increased timeout for hosted service
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);

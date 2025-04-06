@@ -138,21 +138,19 @@ class _MentalHealthInsightsPageState extends State<MentalHealthInsightsPage> {
         DebugHelper.log("Fetching mental health insights from backend");
         DebugHelper.log("Attempt ${_retryAttempts + 1} of ${_maxRetryAttempts + 1}");
 
-        // Try first your PC's actual IP address for physical device, then emulator/localhost addresses
+        // Use hosted URL as primary, then fall back to local URLs if needed
         final urls = [
-          'http://192.168.1.41:5000/get_mental_health_insights',  // PC's actual IP
-          'http://10.0.2.2:5000/get_mental_health_insights',      // Emulator
-          'http://127.0.0.1:5000/get_mental_health_insights'      // Localhost
+          'https://mindtrack-backend.onrender.com/get_mental_health_insights',  // Hosted URL
+          'http://192.168.1.41:5000/get_mental_health_insights',  // PC's actual IP (fallback)
+          'http://10.0.2.2:5000/get_mental_health_insights'       // Emulator (fallback)
         ];
         
         final url = urls[_retryAttempts % urls.length]; // Cycle through URLs on retry
         
         DebugHelper.log("Connecting to: $url");
         
-        // Use a shorter timeout for first attempt, longer for retries
-        final timeout = _retryAttempts == 0 
-            ? const Duration(seconds: 10) 
-            : const Duration(seconds: 20);
+        // Use a longer timeout for the hosted service
+        final timeout = const Duration(seconds: 30);
 
         // Create a client with timeout
         final client = http.Client();

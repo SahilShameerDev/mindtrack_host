@@ -11,6 +11,8 @@ import 'package:flutter_dotenv/flutter_dotenv.dart' as dotenv;
 import 'dart:developer' as developer;
 import 'package:mindtrack/utils/debug_helper.dart';
 import 'package:mindtrack/services/theme_service.dart';
+import 'package:mindtrack/services/permission_service.dart';
+import 'package:mindtrack/widgets/permission_dialog.dart';
 
 void main() async {
   // Add a try-catch block to handle any initialization errors
@@ -97,6 +99,7 @@ class _MyAppState extends State<MyApp> {
   ThemeMode _themeMode = ThemeMode.light;
   bool _isLoading = true;
   bool _isRegistered = false;
+  bool _hasPermission = false;
 
   @override
   void initState() {
@@ -113,16 +116,21 @@ class _MyAppState extends State<MyApp> {
       // Load theme mode
       final themeMode = await ThemeService.getThemeMode();
       
+      // Check usage stats permission
+      final hasPermission = await PermissionService.hasUsageStatsPermission();
+      
       if (mounted) {
         setState(() {
           _isRegistered = isRegistered;
           _themeMode = themeMode;
+          _hasPermission = hasPermission;
           _isLoading = false;
         });
       }
       
       DebugHelper.log("User registered status: $_isRegistered");
       DebugHelper.log("Theme mode: ${_themeMode == ThemeMode.dark ? 'dark' : 'light'}");
+      DebugHelper.log("Usage stats permission: $_hasPermission");
     } catch (e, stackTrace) {
       DebugHelper.error("Error initializing app", e, stackTrace);
       if (mounted) {
@@ -137,6 +145,14 @@ class _MyAppState extends State<MyApp> {
   void _updateThemeMode(ThemeMode mode) {
     setState(() {
       _themeMode = mode;
+    });
+  }
+  
+  // Update permission status
+  Future<void> _updatePermissionStatus() async {
+    final hasPermission = await PermissionService.hasUsageStatsPermission();
+    setState(() {
+      _hasPermission = hasPermission;
     });
   }
 
@@ -161,7 +177,41 @@ class _MyAppState extends State<MyApp> {
         themeMode: _themeMode,
         theme: ThemeService.getLightTheme(),
         darkTheme: ThemeService.getDarkTheme(),
-        home: _isRegistered ? const HomePage() : const RegisterPage(),
+        home: Builder(
+          builder: (context) {
+            // If the user is registered but doesn't have permission, show home page
+            // with a post-build callback to show the permission dialog
+            if (_isRegistered) {
+              final Widget homePage = HomePage();
+              
+              // Check if we need to show the permission dialog
+              if (!_hasPermission) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (BuildContext context) {
+                      return UsageAccessPermissionDialog(
+                        onOpenSettings: () async {
+                          await PermissionService.openUsageStatsSettings();
+                          Navigator.of(context).pop();
+                          
+                          // Check if permission was granted after returning
+                          await Future.delayed(Duration(seconds: 1));
+                          _updatePermissionStatus();
+                        },
+                      );
+                    },
+                  );
+                });
+              }
+              
+              return homePage;
+            } else {
+              return const RegisterPage();
+            }
+          },
+        ),
         routes: {
           '/screen-time': (context) => ScreenTimePage(
                 platform: const MethodChannel('com.example.screen_time_tracker/screen_time'),

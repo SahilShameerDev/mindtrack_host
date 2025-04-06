@@ -5,7 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://10.0.2.2:5000'; // For Android emulator
+  // Update the base URL to use the hosted endpoint
+  static const String _baseUrl = 'https://mindtrack-backend.onrender.com';
   static const String _cachedTipsKey = 'cached_gemini_tips';
   static const String _lastFetchTimeKey = 'last_gemini_tips_fetch_time';
   static const Duration _cacheDuration = Duration(hours: 3);
@@ -40,7 +41,7 @@ class ApiService {
     
     // If we reach here, either there's no cache, it's expired, or parsing failed
     // So make a new API call
-    print('Fetching fresh Gemini tips');
+    print('Fetching fresh Gemini tips from $_baseUrl');
     try {
       // Get user data from Hive
       final moodBox = Hive.box('mood_data');

@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Process
 import android.provider.Settings
 import android.util.Log
+import androidx.annotation.NonNull
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,7 +20,7 @@ class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.example.screen_time_tracker/screen_time"
     private val TAG = "ScreenTimeTracker"
     
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+    override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
@@ -28,10 +29,10 @@ class MainActivity : FlutterActivity() {
                     "checkUsageStatsPermission" -> {
                         result.success(hasUsageStatsPermission())
                     }
-                    "requestUsageStatsPermission" -> {
+                    "openUsageStatsSettings" -> {
                         // Open usage access settings
-                        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                        startActivity(intent)
+                        Log.d(TAG, "Opening usage stats settings")
+                        openUsageStatsSettings()
                         result.success(null) // No direct result, user needs to grant manually
                     }
                     "getScreenTimeData" -> {
@@ -55,6 +56,7 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     else -> {
+                        Log.e(TAG, "Method not implemented: ${call.method}")
                         result.notImplemented()
                     }
                 }
@@ -297,5 +299,15 @@ class MainActivity : FlutterActivity() {
         }
         
         return result
+    }
+    
+    private fun openUsageStatsSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+            startActivity(intent)
+            Log.d(TAG, "Usage stats settings opened successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening usage stats settings: ${e.message}", e)
+        }
     }
 }

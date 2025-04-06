@@ -4,10 +4,11 @@ import 'package:mindtrack/utils/debug_helper.dart';
 import 'dart:io';
 
 class ConnectionChecker {
-  // Using different URLs depending on device type (emulator vs physical)
-  static const String _emulatorBackendUrl = 'http://10.0.2.2:5000/health';  // For emulator
-  static const String _localBackendUrl = 'http://127.0.0.1:5000/health';    // For local testing
-  static const String _pcNetworkUrl = 'http://192.168.1.41:5000/health';    // PC's actual IP for physical device
+  // Update URLs to include the hosted backend
+  static const String _hostedBackendUrl = 'https://mindtrack-backend.onrender.com/health';
+  static const String _emulatorBackendUrl = 'http://10.0.2.2:5000/health';  // For emulator (fallback)
+  static const String _localBackendUrl = 'http://127.0.0.1:5000/health';    // For local testing (fallback)
+  static const String _pcNetworkUrl = 'http://192.168.1.41:5000/health';    // PC's actual IP (fallback)
 
   /// Check if the device has an internet connection
   static Future<bool> hasConnection() async {
@@ -27,15 +28,16 @@ class ConnectionChecker {
     
     // Create a combined future that returns the first successful result
     List<Future<String?>> connectionAttempts = [
-      _checkUrl(_pcNetworkUrl),       // Try PC's actual IP first (for physical device)
-      _checkUrl(_emulatorBackendUrl), // Then try emulator address
-      _checkUrl(_localBackendUrl),    // Finally try localhost
+      _checkUrl(_hostedBackendUrl),      // Try hosted URL first
+      _checkUrl(_pcNetworkUrl),          // Then try PC's actual IP (for physical device)
+      _checkUrl(_emulatorBackendUrl),    // Then try emulator address
+      _checkUrl(_localBackendUrl),       // Finally try localhost
     ];
     
     try {
       // Try all URLs simultaneously and take the first successful one
       return await Future.any(connectionAttempts)
-        .timeout(const Duration(seconds: 3), onTimeout: () {
+        .timeout(const Duration(seconds: 5), onTimeout: () {
           DebugHelper.log("All connection attempts timed out");
           return null;
         });
@@ -49,7 +51,7 @@ class ConnectionChecker {
     try {
       DebugHelper.log("Trying to connect to: $url");
       final response = await http.get(Uri.parse(url))
-          .timeout(const Duration(seconds: 2));
+          .timeout(const Duration(seconds: 5));
       
       if (response.statusCode == 200) {
         final baseUrl = url.substring(0, url.lastIndexOf('/'));
@@ -68,7 +70,7 @@ class ConnectionChecker {
   static Future<bool> isAIServiceAvailable(String baseUrl) async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/health'))
-          .timeout(const Duration(seconds: 2));
+          .timeout(const Duration(seconds: 5));
       
       if (response.statusCode == 200) {
         final body = response.body;
